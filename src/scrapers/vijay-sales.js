@@ -12,9 +12,9 @@ async function scrapeVijaySales(browser, query) {
     await page.setViewport({ width: 1366, height: 900 });
 
     const url = `https://www.vijaysales.com/search?q=${encodeURIComponent(query)}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
 
-    await page.waitForSelector('.productcollection__item', { timeout: 30_000 }).catch(() => null);
+    await page.waitForSelector('.productcollection__item', { timeout: 10_000 }).catch(() => null);
 
     const candidates = await page.evaluate(() => {
       const cards = Array.from(document.querySelectorAll('a.productcollection__item')).slice(0, 48);

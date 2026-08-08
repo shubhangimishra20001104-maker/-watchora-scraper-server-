@@ -123,12 +123,13 @@ app.get('/compare', async (req, res) => {
     return res.json({ query, results: cached, cached: true });
   }
 
-  // Free-tier hosting (e.g. Render's 512MB plan) can't hold 6 Chromium
-  // pages open at once without running out of memory and crashing the
-  // whole process — so these run one at a time here instead of
-  // Promise.all, trading total latency for staying within the memory
-  // ceiling. Each `searchSite` call already opens+closes its own page, so
-  // only ever one extra page is alive beyond the shared browser instance.
+  // Free-tier hosting (e.g. Render's 512MB plan + a proxy-level response
+  // timeout around 100s) can't handle either extreme: 6 parallel Chromium
+  // pages exceeds the memory ceiling, while fully sequential scraping of
+  // 6 sites can take longer than the proxy will wait, causing a 502 even
+  // though the server itself is still working fine. Batches of 2 at a
+  // time is a middle ground — low enough peak memory to avoid an OOM
+  // crash, fast enough (3 batches) to finish before the proxy gives up.
   const siteJobs = [
     ['amazon', 'Amazon', scrapeAmazon],
     ['flipkart', 'Flipkart', scrapeFlipkart],
@@ -137,10 +138,15 @@ app.get('/compare', async (req, res) => {
     ['snapdeal', 'Snapdeal', scrapeSnapdeal],
     ['jiomart', 'JioMart', scrapeJiomart],
   ];
+  const BATCH_SIZE = 2;
 
   const results = [];
-  for (const [siteId, siteName, scraperFn] of siteJobs) {
-    results.push(await searchSite(siteId, siteName, scraperFn, query));
+  for (let i = 0; i < siteJobs.length; i += BATCH_SIZE) {
+    const batch = siteJobs.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(([siteId, siteName, scraperFn]) => searchSite(siteId, siteName, scraperFn, query)),
+    );
+    results.push(...batchResults);
   }
 
   cache.set(cacheKey, results);
