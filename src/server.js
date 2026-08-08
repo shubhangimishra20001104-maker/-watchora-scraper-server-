@@ -123,14 +123,25 @@ app.get('/compare', async (req, res) => {
     return res.json({ query, results: cached, cached: true });
   }
 
-  const results = await Promise.all([
-    searchSite('amazon', 'Amazon', scrapeAmazon, query),
-    searchSite('flipkart', 'Flipkart', scrapeFlipkart, query),
-    searchSite('croma', 'Croma', scrapeCroma, query),
-    searchSite('vijay-sales', 'Vijay Sales', scrapeVijaySales, query),
-    searchSite('snapdeal', 'Snapdeal', scrapeSnapdeal, query),
-    searchSite('jiomart', 'JioMart', scrapeJiomart, query),
-  ]);
+  // Free-tier hosting (e.g. Render's 512MB plan) can't hold 6 Chromium
+  // pages open at once without running out of memory and crashing the
+  // whole process — so these run one at a time here instead of
+  // Promise.all, trading total latency for staying within the memory
+  // ceiling. Each `searchSite` call already opens+closes its own page, so
+  // only ever one extra page is alive beyond the shared browser instance.
+  const siteJobs = [
+    ['amazon', 'Amazon', scrapeAmazon],
+    ['flipkart', 'Flipkart', scrapeFlipkart],
+    ['croma', 'Croma', scrapeCroma],
+    ['vijay-sales', 'Vijay Sales', scrapeVijaySales],
+    ['snapdeal', 'Snapdeal', scrapeSnapdeal],
+    ['jiomart', 'JioMart', scrapeJiomart],
+  ];
+
+  const results = [];
+  for (const [siteId, siteName, scraperFn] of siteJobs) {
+    results.push(await searchSite(siteId, siteName, scraperFn, query));
+  }
 
   cache.set(cacheKey, results);
   res.json({ query, results, cached: false });
