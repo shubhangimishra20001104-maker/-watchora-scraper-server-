@@ -12,7 +12,7 @@ async function scrapeFlipkart(browser, query) {
     await page.setViewport({ width: 1366, height: 900 });
 
     const url = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
     // Flipkart shows a login modal on nearly every fresh session; dismiss it
     // so it doesn't obscure/interfere with the result grid underneath.
@@ -25,7 +25,7 @@ async function scrapeFlipkart(browser, query) {
       })
       .catch(() => null);
 
-    await page.waitForSelector('a[href*="/p/"]', { timeout: 15_000 }).catch(() => null);
+    await page.waitForSelector('a[href*="/p/"]', { timeout: 30_000 }).catch(() => null);
 
     const candidates = await page.evaluate(() => {
       // Flipkart's markup varies a lot between product categories (its

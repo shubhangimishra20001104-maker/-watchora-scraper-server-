@@ -14,13 +14,13 @@ async function scrapeAmazon(browser, query) {
     await page.setViewport({ width: 1366, height: 900 });
 
     const url = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
     // Amazon's search result cards share this data-component-type attribute
     // regardless of category — much more stable than relying on class names,
     // which Amazon changes frequently between deployments.
     await page.waitForSelector('div[data-component-type="s-search-result"]', {
-      timeout: 15_000,
+      timeout: 30_000,
     }).catch(() => null);
 
     const candidates = await page.evaluate(() => {

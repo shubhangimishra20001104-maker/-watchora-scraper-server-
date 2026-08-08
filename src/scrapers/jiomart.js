@@ -18,9 +18,9 @@ async function scrapeJiomart(browser, query) {
     await page.setViewport({ width: 1366, height: 900 });
 
     const url = `https://www.jiomart.com/products?q=${encodeURIComponent(query)}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
-    await page.waitForSelector('.productCard__productTitle', { timeout: 15_000 }).catch(() => null);
+    await page.waitForSelector('.productCard__productTitle', { timeout: 30_000 }).catch(() => null);
 
     const candidates = await page.evaluate(() => {
       const cards = Array.from(document.querySelectorAll('.productContainer')).slice(0, 48);
