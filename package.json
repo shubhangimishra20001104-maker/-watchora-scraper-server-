@@ -1,0 +1,19 @@
+{
+  "name": "watchora-scraper-server",
+  "version": "1.0.0",
+  "description": "Standalone Puppeteer-based scraper server for Watchora's Compare Prices feature.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "node-cache": "^5.1.2",
+    "puppeteer": "^25.5.0"
+  }
+}

@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: watchora-scraper-server
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 3000
+    healthCheckPath: /health
