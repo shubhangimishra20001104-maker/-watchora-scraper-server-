@@ -22,10 +22,6 @@ const puppeteer = require('puppeteer');
 
 const { scrapeAmazon } = require('./scrapers/amazon');
 const { scrapeFlipkart } = require('./scrapers/flipkart');
-const { scrapeCroma } = require('./scrapers/croma');
-const { scrapeVijaySales } = require('./scrapers/vijay-sales');
-const { scrapeSnapdeal } = require('./scrapers/snapdeal');
-const { scrapeJiomart } = require('./scrapers/jiomart');
 const { scoreMatch } = require('./matcher');
 
 const PORT = process.env.PORT || 3000;
@@ -123,31 +119,19 @@ app.get('/compare', async (req, res) => {
     return res.json({ query, results: cached, cached: true });
   }
 
-  // Free-tier hosting (e.g. Render's 512MB plan + a proxy-level response
-  // timeout around 100s) can't handle either extreme: 6 parallel Chromium
-  // pages exceeds the memory ceiling, while fully sequential scraping of
-  // 6 sites can take longer than the proxy will wait, causing a 502 even
-  // though the server itself is still working fine. Batches of 2 at a
-  // time is a middle ground — low enough peak memory to avoid an OOM
-  // crash, fast enough (3 batches) to finish before the proxy gives up.
+  // Free-tier hosting (e.g. Render's 512MB plan) has proven too memory-
+  // constrained to reliably scrape more than a couple of sites per
+  // request — it kept crashing (OOM, 502/503s) even with batching. Scaled
+  // back down to just these 2 sites, run in parallel, which is small
+  // enough to stay stable on the free tier.
   const siteJobs = [
     ['amazon', 'Amazon', scrapeAmazon],
     ['flipkart', 'Flipkart', scrapeFlipkart],
-    ['croma', 'Croma', scrapeCroma],
-    ['vijay-sales', 'Vijay Sales', scrapeVijaySales],
-    ['snapdeal', 'Snapdeal', scrapeSnapdeal],
-    ['jiomart', 'JioMart', scrapeJiomart],
   ];
-  const BATCH_SIZE = 2;
 
-  const results = [];
-  for (let i = 0; i < siteJobs.length; i += BATCH_SIZE) {
-    const batch = siteJobs.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      batch.map(([siteId, siteName, scraperFn]) => searchSite(siteId, siteName, scraperFn, query)),
-    );
-    results.push(...batchResults);
-  }
+  const results = await Promise.all(
+    siteJobs.map(([siteId, siteName, scraperFn]) => searchSite(siteId, siteName, scraperFn, query)),
+  );
 
   cache.set(cacheKey, results);
   res.json({ query, results, cached: false });
