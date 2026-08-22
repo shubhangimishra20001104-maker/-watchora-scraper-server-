@@ -133,7 +133,16 @@ app.get('/compare', async (req, res) => {
     siteJobs.map(([siteId, siteName, scraperFn]) => searchSite(siteId, siteName, scraperFn, query)),
   );
 
-  cache.set(cacheKey, results);
+  // Only cache results that actually completed a scrape (a real price or a
+  // genuine "no matching product" outcome). Don't cache "Unavailable"
+  // failures — those are transient (timeouts, crashes, etc.), and caching
+  // them for 5 minutes would keep serving a stale failure to every
+  // subsequent search for the same query instead of letting it retry.
+  const isTransientFailure = (result) =>
+    result.error === 'Unavailable — could not retrieve the latest price. Try again later.';
+  if (!results.some(isTransientFailure)) {
+    cache.set(cacheKey, results);
+  }
   res.json({ query, results, cached: false });
 });
 
