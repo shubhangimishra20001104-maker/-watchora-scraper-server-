@@ -21,6 +21,14 @@ function tokenize(text) {
     // products that merely happen to share a screen-size digit.
     .replace(/\d+(\.\d+)?\s*(cm|mm|inch|inches|in|″|"|')\b/g, ' ')
     .replace(/[^a-z0-9\s]/g, ' ')
+    // Split letter/digit boundaries apart ("iphone16" -> "iphone 16") so a
+    // user typing the model number glued to the name (very common —
+    // "iphone16", "galaxys24") still tokenizes the same way a real title
+    // like "Apple iPhone 16" does. Without this, "iphone16" is a single
+    // token that can never overlap with the title's separate "iphone" +
+    // "16" tokens, producing false "not found" results for real products.
+    .replace(/([a-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([a-z])/g, '$1 $2')
     .split(/\s+/)
     .filter((t) => t.length > 0 && !STOPWORDS.has(t));
 }
