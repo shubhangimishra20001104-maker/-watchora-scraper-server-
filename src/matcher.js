@@ -62,6 +62,12 @@ const ACCESSORY_WORDS = new Set([
  * electronics (e.g. "Galaxy S24" vs "Galaxy S24 Ultra"). */
 const VARIANT_WORDS = new Set([
   'pro', 'max', 'plus', 'ultra', 'mini', 'lite', 'air', 'se', 'fe', 'neo',
+  // Single-letter suffixes glued to a model number ("iPhone 16e", "Galaxy
+  // S24+") end up as their own token once `tokenize`'s letter/digit-boundary
+  // split separates them from the number — e.g. "16e" -> "16" + "e". These
+  // denote a genuinely different (and differently priced) variant just like
+  // the word-based ones above, so they need the same penalty.
+  'e',
 ]);
 
 function scoreMatch(query, title) {
