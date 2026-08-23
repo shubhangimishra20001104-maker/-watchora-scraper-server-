@@ -48,6 +48,14 @@ const ACCESSORY_WORDS = new Set([
   'holder', 'stand', 'pouch', 'sticker', 'compatible', 'lens', 'back',
 ]);
 
+/** Product-line variant/tier words that turn a base model into a distinct
+ * (and usually differently priced) product — "iPhone 16" vs "iPhone 16 Pro
+ * Max" being the canonical example, but this applies broadly across
+ * electronics (e.g. "Galaxy S24" vs "Galaxy S24 Ultra"). */
+const VARIANT_WORDS = new Set([
+  'pro', 'max', 'plus', 'ultra', 'mini', 'lite', 'air', 'se', 'fe', 'neo',
+]);
+
 function scoreMatch(query, title) {
   const queryTokens = new Set(tokenize(query));
   const titleTokens = new Set(tokenize(title));
@@ -111,6 +119,19 @@ function scoreMatch(query, title) {
     // e.g. query "iphone 16" (the phone) must not match a listing for
     // "...Case Compatible For...iPhone 16..." (an accessory) just because
     // every query word/number happens to appear inside that longer title.
+    score = Math.max(0, score - 70);
+  }
+
+  // Variant-name requirement: e.g. searching plain "iphone" or "iphone 16"
+  // should not match "iPhone 16 Pro Max" or "iPhone 16 Plus" listings —
+  // those are different (and differently priced) products, not the base
+  // model the user actually typed. Only penalize when the title's variant
+  // word wasn't itself part of the query, so a query that *does* say "pro
+  // max" still matches Pro Max listings normally.
+  const titleExtraVariantWords = [...titleTokens].filter(
+    (t) => VARIANT_WORDS.has(t) && !queryTokens.has(t),
+  );
+  if (titleExtraVariantWords.length > 0) {
     score = Math.max(0, score - 70);
   }
 
