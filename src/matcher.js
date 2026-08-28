@@ -54,6 +54,14 @@ const ACCESSORY_WORDS = new Set([
   'case', 'cases', 'cover', 'covers', 'skin', 'screen', 'guard', 'protector',
   'tempered', 'glass', 'charger', 'cable', 'adapter', 'strap', 'band',
   'holder', 'stand', 'pouch', 'sticker', 'compatible', 'lens', 'back',
+  // "S Pen Replacement", "stylus" etc. — accessory listings for phones that
+  // legitimately reuse the phone's full model name in their own title (a
+  // replacement stylus "for Samsung Galaxy S24 Ultra" mentions every query
+  // token), so without these the accessory check above never triggers and
+  // a ₹1,599 stylus scores 100% confidence against a search for the phone.
+  'pen', 'spen', 'stylus', 'replacement', 'tips', 'tip', 'nib', 'nibs',
+  'earphones', 'earbuds', 'headphones', 'tempered-glass', 'tripod',
+  'mount', 'clip', 'ring', 'popsocket', 'bumper',
 ]);
 
 /** Product-line variant/tier words that turn a base model into a distinct
