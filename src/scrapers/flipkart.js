@@ -1,126 +1,94 @@
 /**
- * Scrapes Flipkart search results for a query — same real-headless-Chrome
- * approach as `amazon.js`; see that file's doc comment for the overall
- * rationale (this replaces the tab the extension used to open per-site).
+ * Scrapes Flipkart search results for a query. Flipkart's search page is
+ * fully server-rendered (unlike Amazon, which returns a 503 "automated
+ * access" block to plain HTTP requests) — a bare `fetch()` + Cheerio parse
+ * gets the exact same product data a real browser would see, without the
+ * cost of launching Chromium at all. This is dramatically faster than the
+ * Puppeteer path (typically well under a second vs several seconds), so
+ * it's tried first; `scrapeFlipkartViaPuppeteer` (see flipkart-puppeteer.js)
+ * is only used as a fallback if this fetch path returns zero usable
+ * candidates (e.g. Flipkart starts bot-checking plain requests, or changes
+ * its markup in a way this parser can't handle).
  */
-async function scrapeFlipkart(browser, query) {
-  const page = await browser.newPage();
-  try {
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-    );
-    await page.setViewport({ width: 1366, height: 900 });
+const cheerio = require('cheerio');
+const { scrapeFlipkartViaPuppeteer } = require('./flipkart-puppeteer');
 
-    // Same rationale as amazon.js: we only scrape text/price data out of the
-    // DOM, so skip downloading images/fonts/CSS/media entirely — this is a
-    // significant chunk of Flipkart's page weight and cutting it speeds up
-    // page-load substantially with zero effect on what we extract.
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const type = req.resourceType();
-      if (type === 'image' || type === 'stylesheet' || type === 'font' || type === 'media') {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
-    const url = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`;
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+async function fetchFlipkartCandidates(query) {
+  const url = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      'Accept-Language': 'en-IN,en;q=0.9',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) return [];
 
-    // Flipkart shows a login modal on nearly every fresh session; dismiss it
-    // so it doesn't obscure/interfere with the result grid underneath.
-    await page
-      .evaluate(() => {
-        const closeBtn = Array.from(document.querySelectorAll('button')).find(
-          (b) => b.textContent.trim() === '✕',
-        );
-        if (closeBtn) closeBtn.click();
-      })
-      .catch(() => null);
+  const html = await res.text();
+  const $ = cheerio.load(html);
 
-    await page.waitForSelector('a[href*="/p/"]', { timeout: 10_000 }).catch(() => null);
+  // Same "group product links by a shared ancestor card" approach as the
+  // Puppeteer version, since Flipkart's markup varies between category
+  // layouts — see flipkart-puppeteer.js for the fuller rationale.
+  const links = $('a[href*="/p/"]').slice(0, 80);
+  const seen = new Set();
+  const candidates = [];
 
-    const candidates = await page.evaluate(() => {
-      // Flipkart's markup varies a lot between product categories (its
-      // grid-view vs list-view layouts use different class names), so
-      // instead of one fixed card selector we group every product-detail
-      // link ("/p/") by its ancestor 3 levels up and treat each unique
-      // ancestor as one card — a simplified version of the "repeated
-      // sibling" grouping the extension's own scanner used.
-      const links = Array.from(document.querySelectorAll('a[href*="/p/"]')).slice(0, 80);
-      const seen = new Set();
-      const cards = [];
+  links.each((_i, el) => {
+    const $link = $(el);
+    let ancestor = $link;
+    for (let i = 0; i < 3; i += 1) {
+      const parent = ancestor.parent();
+      if (parent.length === 0) break;
+      ancestor = parent;
+    }
 
-      for (const link of links) {
-        let ancestor = link;
-        for (let i = 0; i < 3 && ancestor.parentElement; i += 1) {
-          ancestor = ancestor.parentElement;
-        }
-        if (seen.has(ancestor)) continue;
-        seen.add(ancestor);
+    // dedupe by the ancestor's own position in the DOM (data-id is present
+    // on most card wrappers; fall back to the raw href when it's missing)
+    const dedupeKey = ancestor.attr('data-id') || $link.attr('href');
+    if (!dedupeKey || seen.has(dedupeKey)) return;
+    seen.add(dedupeKey);
 
-        const text = ancestor.textContent || '';
-        const priceMatch = text.match(/₹[\d,]+/);
-        if (!priceMatch) continue;
+    const text = ancestor.text() || '';
+    const priceMatch = text.match(/₹[\d,]+/);
+    if (!priceMatch) return;
 
-        // Prefer a real title-bearing anchor's `title` attribute (Flipkart
-        // sets this reliably on the actual product-name link) — falling
-        // back to this specific link's own attributes/text only when
-        // nothing better is found in the card, since a bare textContent
-        // grab off the wrong link can accidentally include "Add to
-        // Compare", ratings, and price text glued together with no
-        // separators.
-        const titledLink = ancestor.querySelector('a[title]');
-        let title = (
-          (titledLink && titledLink.getAttribute('title')) ||
-          link.getAttribute('title') ||
-          link.textContent ||
-          ''
-        ).trim();
-        // Flipkart's card ancestor often has no dedicated title element, so
-        // the fallback above grabs the whole card's mashed-together text
-        // (ratings, specs, price, "Add to Compare") with no separators —
-        // trim it down to just the product name portion for a readable
-        // result: strip the "Add to Compare" prefix and cut everything
-        // from the first digit-ratings-count run onward.
-        // Flipkart prepends badges like "Bestseller" and/or "Add to
-        // Compare" directly onto the title text with no separator — strip
-        // any run of these known prefixes (in any order/repetition).
-        let prevTitle;
-        do {
-          prevTitle = title;
-          title = title.replace(/^(Bestseller|Add to Compare)/i, '');
-        } while (title !== prevTitle);
-        // Cut off at the first sign of the rating block (a decimal rating
-        // like "4.6" immediately followed by a comma-grouped count and
-        // "Ratings"/"Reviews", or a bare "128 GB ROM" spec run) — whichever
-        // comes first — so only the actual product name remains.
-        const specsCutoff = title.search(/\d\.\d[\d,]*\s*(Ratings|Reviews)|\d+\s*GB ROM/i);
-        if (specsCutoff > 0) {
-          title = title.slice(0, specsCutoff);
-        }
-        title = title.trim();
-        if (!title) continue;
+    // The product thumbnail's alt text is a clean, pre-formatted product
+    // name on Flipkart's search results ("Apple iPhone 16 (White, 128
+    // GB)") — much more reliable than trying to isolate the title out of
+    // the card's mashed-together text like the Puppeteer fallback has to.
+    const imgAlt = ancestor.find('img[alt]').first().attr('alt');
+    const titledLink = ancestor.find('a[title]').first().attr('title');
+    const title = (imgAlt || titledLink || $link.text() || '').trim();
+    if (!title) return;
 
-        cards.push({
-          title,
-          priceText: priceMatch[0],
-          href: link.getAttribute('href'),
-        });
-      }
-      return cards.slice(0, 48);
-    });
-
-    return candidates.map((c) => ({
-      title: c.title,
-      priceText: c.priceText,
-      url: c.href ? new URL(c.href, 'https://www.flipkart.com').toString() : url,
+    const href = $link.attr('href');
+    candidates.push({
+      title,
+      priceText: priceMatch[0],
+      url: href ? new URL(href, 'https://www.flipkart.com').toString() : url,
       rating: null,
-    }));
-  } finally {
-    await page.close();
+    });
+  });
+
+  return candidates.slice(0, 48);
+}
+
+async function scrapeFlipkart(browser, query) {
+  try {
+    const candidates = await fetchFlipkartCandidates(query);
+    if (candidates.length > 0) {
+      return candidates;
+    }
+  } catch (error) {
+    console.error('[flipkart] fast fetch path failed, falling back to Puppeteer:', error.message);
   }
+
+  return scrapeFlipkartViaPuppeteer(browser, query);
 }
 
 module.exports = { scrapeFlipkart };
