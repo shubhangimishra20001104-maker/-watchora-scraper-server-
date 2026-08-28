@@ -13,6 +13,22 @@ async function scrapeAmazon(browser, query) {
     );
     await page.setViewport({ width: 1366, height: 900 });
 
+    // We only ever read text/prices out of the DOM, never render or look at
+    // the page ourselves — images, fonts, stylesheets and media are pure
+    // overhead here. Amazon's search results page loads dozens of product
+    // images; blocking them (and CSS/fonts) cuts page-load time
+    // significantly since the browser skips downloading/decoding them
+    // entirely, without affecting anything we actually scrape.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (type === 'image' || type === 'stylesheet' || type === 'font' || type === 'media') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
     const url = `https://www.amazon.in/s?k=${encodeURIComponent(query)}`;
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
 

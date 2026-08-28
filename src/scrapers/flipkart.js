@@ -11,6 +11,20 @@ async function scrapeFlipkart(browser, query) {
     );
     await page.setViewport({ width: 1366, height: 900 });
 
+    // Same rationale as amazon.js: we only scrape text/price data out of the
+    // DOM, so skip downloading images/fonts/CSS/media entirely — this is a
+    // significant chunk of Flipkart's page weight and cutting it speeds up
+    // page-load substantially with zero effect on what we extract.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (type === 'image' || type === 'stylesheet' || type === 'font' || type === 'media') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
     const url = `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`;
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 });
 
