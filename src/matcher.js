@@ -20,6 +20,15 @@ function tokenize(text) {
     // "iPhone 16") and produces false-positive matches against unrelated
     // products that merely happen to share a screen-size digit.
     .replace(/\d+(\.\d+)?\s*(cm|mm|inch|inches|in|″|"|')\b/g, ' ')
+    // Strip storage/RAM figures like "12GB", "256 GB", "1TB" for the same
+    // reason as the cm/mm/inch stripping above: otherwise "12GB" splits
+    // into a standalone "12" token that can collide with an unrelated
+    // model number in the query (e.g. searching "OnePlus 12R" would let a
+    // completely different "OnePlus 15R, 12GB+256GB" listing satisfy the
+    // "12" model-number requirement via its RAM spec instead of its actual
+    // model number). `extractStorage()` reads the raw (untokenized) text
+    // separately, so this doesn't affect the storage-mismatch check above.
+    .replace(/\d+(\.\d+)?\s*(gb|tb|mb)\b/gi, ' ')
     .replace(/[^a-z0-9\s]/g, ' ')
     // Split letter/digit boundaries apart ("iphone16" -> "iphone 16") so a
     // user typing the model number glued to the name (very common —
