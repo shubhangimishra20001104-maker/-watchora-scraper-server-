@@ -3,6 +3,7 @@ services:
     name: watchora-scraper-server
     runtime: docker
     plan: free
+    region: singapore
     dockerfilePath: ./Dockerfile
     envVars:
       - key: PORT
