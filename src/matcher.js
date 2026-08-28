@@ -144,8 +144,18 @@ function scoreMatch(query, title) {
     }
   }
 
-  const queryHasAccessoryWord = [...queryTokens].some((t) => ACCESSORY_WORDS.has(t));
-  const titleHasAccessoryWord = [...titleTokens].some((t) => ACCESSORY_WORDS.has(t));
+  // Titles like "SkinPOCO F6" glue an accessory word directly onto the
+  // brand/model with no space ("skin" + "poco" -> tokenized as a single
+  // "skinpoco" token), so an exact-match check against ACCESSORY_WORDS
+  // never fires. Also check whether any accessory word appears as a
+  // substring of a longer token, the same "titles split words differently"
+  // fallback already used for the brand-name overlap check above.
+  const hasAccessoryWord = (tokens) =>
+    [...tokens].some(
+      (t) => ACCESSORY_WORDS.has(t) || [...ACCESSORY_WORDS].some((w) => t.length > w.length && t.includes(w)),
+    );
+  const queryHasAccessoryWord = hasAccessoryWord(queryTokens);
+  const titleHasAccessoryWord = hasAccessoryWord(titleTokens);
   if (!queryHasAccessoryWord && titleHasAccessoryWord) {
     // e.g. query "iphone 16" (the phone) must not match a listing for
     // "...Case Compatible For...iPhone 16..." (an accessory) just because
