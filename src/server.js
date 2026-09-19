@@ -22,6 +22,7 @@ const puppeteer = require('puppeteer');
 
 const { scrapeAmazon } = require('./scrapers/amazon');
 const { scrapeFlipkart } = require('./scrapers/flipkart');
+const { scrapeRelianceDigital } = require('./scrapers/reliance-digital');
 const { scoreMatch } = require('./matcher');
 
 const PORT = process.env.PORT || 3000;
@@ -122,11 +123,17 @@ app.get('/compare', async (req, res) => {
   // Free-tier hosting (e.g. Render's 512MB plan) has proven too memory-
   // constrained to reliably scrape more than a couple of sites per
   // request — it kept crashing (OOM, 502/503s) even with batching. Scaled
-  // back down to just these 2 sites, run in parallel, which is small
-  // enough to stay stable on the free tier.
+  // back down to just these sites, run in parallel, which is small enough
+  // to stay stable on the free tier. Reliance Digital was added despite
+  // this constraint because — unlike Amazon/Flipkart's Puppeteer paths —
+  // it resolves in well under a second (no bot-check delay), so it adds
+  // negligible extra Chromium page/RAM load per request; if that stops
+  // being true (site changes, gets bot-checked, etc.) reconsider dropping
+  // it back out per this same free-tier RAM reasoning.
   const siteJobs = [
     ['amazon', 'Amazon', scrapeAmazon],
     ['flipkart', 'Flipkart', scrapeFlipkart],
+    ['reliance-digital', 'Reliance Digital', scrapeRelianceDigital],
   ];
 
   const results = await Promise.all(
