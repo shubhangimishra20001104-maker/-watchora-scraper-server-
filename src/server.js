@@ -33,6 +33,23 @@ const cache = new NodeCache({ stdTTL: CACHE_TTL_SECONDS });
 const app = express();
 app.use(cors());
 
+// Free-tier hosting (e.g. Render's 512MB plan) has proven too memory-
+// constrained to reliably scrape more than a couple of sites per request —
+// it kept crashing (OOM, 502/503s) even with batching. Scaled back down to
+// just these sites, run in parallel, which is small enough to stay stable
+// on the free tier. Reliance Digital was added despite this constraint
+// because — unlike Amazon/Flipkart's Puppeteer paths — it resolves in well
+// under a second (no bot-check delay), so it adds negligible extra
+// Chromium page/RAM load per request; if that stops being true (site
+// changes, gets bot-checked, etc.) reconsider dropping it back out per
+// this same free-tier RAM reasoning.
+const siteJobs = [
+  ['amazon', 'Amazon', scrapeAmazon],
+  ['flipkart', 'Flipkart', scrapeFlipkart],
+  ['reliance-digital', 'Reliance Digital', scrapeRelianceDigital],
+];
+const siteJobsIds = siteJobs.map(([siteId]) => siteId);
+
 let browserPromise = null;
 async function getBrowser() {
   if (browserPromise) {
@@ -120,22 +137,6 @@ app.get('/compare', async (req, res) => {
     return res.json({ query, results: cached, cached: true });
   }
 
-  // Free-tier hosting (e.g. Render's 512MB plan) has proven too memory-
-  // constrained to reliably scrape more than a couple of sites per
-  // request — it kept crashing (OOM, 502/503s) even with batching. Scaled
-  // back down to just these sites, run in parallel, which is small enough
-  // to stay stable on the free tier. Reliance Digital was added despite
-  // this constraint because — unlike Amazon/Flipkart's Puppeteer paths —
-  // it resolves in well under a second (no bot-check delay), so it adds
-  // negligible extra Chromium page/RAM load per request; if that stops
-  // being true (site changes, gets bot-checked, etc.) reconsider dropping
-  // it back out per this same free-tier RAM reasoning.
-  const siteJobs = [
-    ['amazon', 'Amazon', scrapeAmazon],
-    ['flipkart', 'Flipkart', scrapeFlipkart],
-    ['reliance-digital', 'Reliance Digital', scrapeRelianceDigital],
-  ];
-
   const results = await Promise.all(
     siteJobs.map(([siteId, siteName, scraperFn]) => searchSite(siteId, siteName, scraperFn, query)),
   );
@@ -153,7 +154,17 @@ app.get('/compare', async (req, res) => {
   res.json({ query, results, cached: false });
 });
 
-app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/health', (_req, res) =>
+  res.json({
+    ok: true,
+    // RENDER_GIT_COMMIT is auto-populated by Render for every deploy — a
+    // quick, unambiguous way to confirm exactly which commit is actually
+    // live, without relying on dashboard screenshots/logs (which proved
+    // easy to mix up with the wrong deploy/tab during troubleshooting).
+    gitCommit: process.env.RENDER_GIT_COMMIT || 'unknown',
+    sites: siteJobsIds,
+  }),
+);
 
 app.listen(PORT, () => {
   console.log(`Watchora scraper server listening on http://localhost:${PORT}`);

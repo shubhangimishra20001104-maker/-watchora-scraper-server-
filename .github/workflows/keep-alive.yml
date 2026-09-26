@@ -16,5 +16,12 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
+      # continue-on-error: a cold-start ping timing out occasionally is
+      # expected/harmless (that's the whole point of this job — the very
+      # thing it's guarding against), so it shouldn't count as a failed
+      # GitHub Actions run and spam an email every time. The ping still
+      # runs every 10 minutes either way; this only silences the noisy
+      # "workflow failed" notification when a single ping doesn't land.
       - name: Ping /health
+        continue-on-error: true
         run: curl -fsS --max-time 30 "https://watchora-scraper-server-5u3a.onrender.com/health"
